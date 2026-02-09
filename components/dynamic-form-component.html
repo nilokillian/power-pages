@@ -1,0 +1,357 @@
+{% comment %} ==================== GET FORM SCHEMA ==================== 
+{% fetchxml entity_metadata_query %}
+<fetch top="1">
+  <entity name="entity">
+    <attribute name="objecttypecode" />
+    <filter>
+      <condition attribute="logicalname" operator="eq" value="{{ entity_logical_name_param }}" />
+    </filter>
+  </entity>
+</fetch>
+{% endfetchxml %}
+
+{% assign entity_type_code = entity_metadata_query.results.entities[0].objecttypecode %}
+{% endcomment %}
+
+{% fetchxml form_query %}
+<fetch top="1">
+  <entity name="systemform">
+    <attribute name="formxml" />
+    <filter type="and">
+    {% comment %}   <condition attribute="objecttypecode" operator="eq" value="{{ entity_type_code }}" />     {% endcomment %}
+      <condition attribute="name" operator="eq" value="{{ entity_form_name_param }}" />
+      <condition attribute="type" operator="eq" value="2" />
+    </filter>
+  </entity>
+</fetch>
+{% endfetchxml %}
+
+{% assign form_xml = form_query.results.entities[0].formxml %}
+
+{% comment %} ==================== EXTRACT FIELDS FROM FORM XML ==================== {% endcomment %}
+{% assign fields_array = "" %}
+{% assign xml_parts = form_xml | split: 'datafieldname="' %}
+
+{% for part in xml_parts %}
+  {% unless forloop.first %}
+    {% assign field_name = part | split: '"' | first %}
+    {% if field_name != "" and field_name != blank %}
+      {% if fields_array == "" %}
+        {% assign fields_array = field_name %}
+      {% else %}
+        {% unless fields_array contains field_name %}
+          {% assign fields_array = fields_array | append: "," | append: field_name %}
+        {% endunless %}
+      {% endif %}
+    {% endif %}
+  {% endunless %}
+{% endfor %}
+
+{% assign fields_list = fields_array | split: "," %}
+
+{% comment %} ==================== GET RECORD DATA DYNAMICALLY ==================== {% endcomment %}
+{% assign record_id = request.params['id'] %}
+
+{% if record_id and fields_list.size > 0 %}
+  {% capture fetch_attributes %}
+    {% for field in fields_list %}<attribute name="{{ field }}" />
+    {% endfor %}
+  {% endcapture %}
+
+  {% assign entity_primary_key = entity_logical_name_param | append: "id" %}
+
+  {% fetchxml case_query %}
+  <fetch top="1">
+    <entity name="{{ entity_logical_name_param }}">
+      {{ fetch_attributes }}
+      <filter>
+        <condition attribute="{{ entity_primary_key }}" operator="eq" value="{{ record_id }}" />
+      </filter>
+    </entity>
+  </fetch>
+  {% endfetchxml %}
+  {% assign record = case_query.results.entities | first %}
+{% endif %}
+
+{% comment %} ==================== RENDER ==================== {% endcomment %}
+<div id="readonly-form-container"></div>
+
+<script>
+(function() {
+  var recordData = {
+    {% for field in fields_list %}
+      {% assign field_value = record[field] %}
+      "{{ field }}": {% if field_value == nil or field_value == blank %}""{% elsif field_value.name %}"{{ field_value.name | escape }}"{% elsif field_value.Id %}"{{ field_value.name | escape }}"{% else %}"{{ field_value | date: '%Y-%m-%d' | default: field_value | escape }}"{% endif %}{% unless forloop.last %},{% endunless %}
+    {% endfor %}
+  };
+
+  var formXml = (function(str) {
+    return new DOMParser().parseFromString(str, "text/html").documentElement.textContent;
+  })("{{ form_xml | escape }}");
+
+  var xmlDoc = new DOMParser().parseFromString(formXml, "text/xml");
+  var html = "";
+  var fieldCount = 0;
+  var VISIBLE_FIELDS = 10;
+
+  xmlDoc.querySelectorAll("form > tabs > tab").forEach(function(tab) {
+    var tabLabel = tab.querySelector("labels > label")?.getAttribute("description") || "";
+    html += '<div class="pp-tab"><h2>' + tabLabel + '</h2>';
+
+    tab.querySelectorAll("columns > column > sections > section").forEach(function(section) {
+      var sectionLabel = section.querySelector("labels > label")?.getAttribute("description") || "";
+      var showLabel = section.getAttribute("showlabel") !== "false";
+
+      html += '<fieldset class="pp-section">';
+      if (showLabel && sectionLabel) html += '<legend>' + sectionLabel + '</legend>';
+      html += '<div class="pp-fields-container">';
+
+      section.querySelectorAll("rows > row").forEach(function(row) {
+        var cells = row.querySelectorAll("cell");
+        if (!cells.length) return;
+
+        cells.forEach(function(cell) {
+          var control = cell.querySelector("control");
+          if (!control) return;
+
+          var fieldName = control.getAttribute("datafieldname");
+          if (!fieldName) return;
+
+          var label = cell.querySelector("labels > label")?.getAttribute("description") || fieldName;
+          var value = recordData[fieldName] || "";
+          var hiddenClass = fieldCount >= VISIBLE_FIELDS ? ' pp-hidden-field' : '';
+
+          html += '<div class="pp-row' + hiddenClass + '">';
+          html += '<label class="pp-label">' + label + '</label>';
+          html += '<div class="pp-value">' + (value || "—") + '</div>';
+          html += '</div>';
+
+          fieldCount++;
+        });
+      });
+
+      html += '</div>';
+      html += '</fieldset>';
+    });
+
+    html += '</div>';
+  });
+
+  // Add "See more" button if there are hidden fields
+  if (fieldCount > VISIBLE_FIELDS) {
+    html += '<div class="pp-expand-container">';
+    html += '<button type="button" class="pp-expand-btn" id="ppExpandBtn">';
+    html += '<span class="pp-expand-text">See more</span>';
+    html += '<svg class="pp-expand-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">';
+    html += '<path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>';
+    html += '</svg>';
+    html += '</button>';
+    html += '</div>';
+  }
+
+  document.getElementById("readonly-form-container").innerHTML = html;
+
+  // Handle expand/collapse
+  var expandBtn = document.getElementById("ppExpandBtn");
+  if (expandBtn) {
+    var isExpanded = false;
+    expandBtn.addEventListener("click", function() {
+      isExpanded = !isExpanded;
+      var hiddenFields = document.querySelectorAll(".pp-hidden-field");
+      var btnText = expandBtn.querySelector(".pp-expand-text");
+      
+      hiddenFields.forEach(function(field) {
+        field.classList.toggle("pp-visible", isExpanded);
+      });
+      
+      expandBtn.classList.toggle("pp-expanded", isExpanded);
+      btnText.textContent = isExpanded ? "See less" : "See more";
+    });
+  }
+})();
+</script>
+
+<style>
+/* Fluent UI v9 Inspired Styles */
+:root {
+  --fluent-brand-primary: #0f6cbd;
+  --fluent-background-primary: #ffffff;
+  --fluent-background-input: #f3f3f3;
+  --fluent-foreground-primary: #242424;
+  --fluent-foreground-secondary: #616161;
+  --fluent-foreground-disabled: #a19f9d;
+  --fluent-border-subtle: #e0e0e0;
+  --fluent-radius-medium: 4px;
+  --fluent-font-family: "Segoe UI", "Segoe UI Web", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif;
+}
+
+#readonly-form-container {
+  font-family: var(--fluent-font-family);
+  margin: 0 auto;
+  background: var(--fluent-background-primary);
+  box-sizing: border-box;
+}
+
+/* Tab Styles */
+.pp-tab {
+  margin-bottom: 24px;
+  background: var(--fluent-background-primary);
+}
+
+.pp-tab h2 {
+  display: none;
+}
+
+/* Section Styles */
+.pp-section {
+  border: none;
+  border-bottom: 1px solid var(--fluent-border-subtle);
+  padding: 20px 0;
+  margin: 0;
+  background: var(--fluent-background-primary);
+}
+
+.pp-section:last-child {
+  border-bottom: none;
+}
+
+.pp-section legend {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--fluent-foreground-primary);
+  padding: 0;
+  margin-bottom: 20px;
+  background: transparent;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pp-section legend::before {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 16px;
+  background: var(--fluent-brand-primary);
+  border-radius: 2px;
+}
+
+/* Row Styles */
+.pp-fields-container {
+  display: grid;
+  grid-template-columns: auto 1fr;
+}
+
+/* Cell/Field Styles */
+.pp-row {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+  min-height: 36px;
+  padding: 6px 0;
+  border-bottom: 0.5px solid #B8B8B8;
+  gap: 48px;
+}
+
+.pp-row:last-child {
+  border-bottom: none;
+}
+
+.pp-label {
+  font-weight: 500;
+  font-size: 12px;
+  color: #8C8C8C;
+  text-transform: uppercase;
+  margin: 0;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.pp-value {
+  background: transparent;
+  color: #191717;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  #readonly-form-container {
+    padding: 16px;
+  }
+
+  .pp-section {
+    padding: 16px 0;
+  }
+
+  .pp-fields-container {
+    gap: 0;
+  }
+}
+
+/* Print styles */
+@media print {
+  #readonly-form-container {
+    padding: 0;
+  }
+
+  .pp-hidden-field {
+    display: flex !important;
+  }
+
+  .pp-expand-container {
+    display: none !important;
+  }
+}
+
+/* Hidden fields */
+.pp-hidden-field {
+  display: none;
+}
+
+.pp-hidden-field.pp-visible {
+  display: grid;
+}
+
+/* Expand button */
+.pp-expand-container {
+  padding: 0;
+  margin-top: -8px;
+  text-align: center;
+}
+
+.pp-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--fluent-radius-medium);
+  color: var(--fluent-brand-primary);
+  font-family: var(--fluent-font-family);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.pp-expand-btn:hover {
+  background: rgba(15, 108, 189, 0.08);
+}
+
+.pp-expand-btn:active {
+  background: rgba(15, 108, 189, 0.12);
+}
+
+.pp-expand-icon {
+  transition: transform 0.2s ease;
+}
+
+.pp-expand-btn.pp-expanded .pp-expand-icon {
+  transform: rotate(180deg);
+}
+</style>

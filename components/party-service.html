@@ -1,0 +1,37 @@
+
+
+{% comment %} 
+  user_party_type_param complainant 485580001 
+  user_party_type_param respondent 485580000 
+{% endcomment %}
+
+{% fetchxml case_query %}
+  <fetch distinct="true">
+    <entity name="av_case">
+    <attribute name="av_caseid" />
+    <attribute name="av_name" />
+    <attribute name="av_form" />
+    <attribute name="av_intakequestionnaireform" />
+    <attribute name="createdon" />
+    <attribute name="av_dismissalreason" />
+    <attribute name="statuscode" />
+    <attribute name="av_intakequestionnaireid" />
+    <attribute name="av_casesummarycomplainant" />
+    <attribute name="av_accesscode" />
+      <link-entity name="av_party"
+                   from="av_case"
+                   to="av_caseid"
+                   link-type="inner"
+                   alias="party">
+        <filter type="and">
+          <condition attribute="av_contact" operator="eq" value="{{ user.id }}" />
+          <condition attribute="av_partytype" operator="eq" value="{{ user_party_type_param }}" />
+        </filter>
+      </link-entity>
+    </entity>
+  </fetch>
+{% endfetchxml %}
+
+
+
+{% assign party_cases = case_query.results.entities %}

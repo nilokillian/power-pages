@@ -1,0 +1,654 @@
+{% comment %}
+================================================================================
+PARTY-CENTRIC MEETING INVITATION COMPONENT
+================================================================================
+Parameters:
+  - param_party_type: User's party type (e.g., 485580001 = complainant, 485580000 = respondent)
+  - param_filter_attribute: Dynamic filter attribute (e.g., 'av_case')
+  - param_filter_value: Dynamic filter value (e.g., request.params.id)
+================================================================================
+{% endcomment %}
+
+{% comment %} Include party-centric invitation service with dynamic filtering {% endcomment %}
+{% include 'OHR Invitation Service' 
+    param_party_type: param_party_type
+    param_filter_attribute: param_filter_attribute 
+    param_filter_value: param_filter_value 
+%}
+
+{% include 'snippet' snippet_name: 'Overlay Error' %}
+{% include 'snippet' snippet_name: 'Loading Default' %}
+
+{% comment %} Get the current entity using dynamic filter if provided {% endcomment %}
+{% if param_filter_attribute == 'av_case' and param_filter_value %}
+    {% assign current_case = entities['av_case'][param_filter_value] %}
+{% endif %}
+
+{% comment %} Check if user has valid party and invitations {% endcomment %}
+{% assign has_valid_access = false %}
+{% if user_party and invitations.size > 0 %}
+    {% assign has_valid_access = true %}
+{% endif %}
+
+{% if has_valid_access %}
+
+<div class="container invitation-container">
+
+{% comment %} Display party type information {% endcomment %}
+<div class="party-info-banner">
+    <span class="party-label">You are representing:</span>
+    <span class="party-type">{{ user_party.av_partytype.Label }}</span>
+</div>
+
+{% comment %} Show acceptance status for all party types {% endcomment %}
+<div class="party-status-container">
+    <h5 class="party-status-title">Party Acceptance Status:</h5>
+    {% for party_type_value in party_types_in_meeting %}
+        {% assign party_invitations = all_meeting_invitations | where: 'av_partytype.Value', party_type_value %}
+        {% assign accepted_invitation = party_invitations | where: 'statuscode.Value', 485580006 | first %}
+        {% assign party_type_label = party_invitations | first %}
+        <div class="party-status-item">
+            <span class="party-status-name">{{ party_type_label.av_partytype.Label }}</span>
+            {% if accepted_invitation %}
+                <span class="party-status-badge accepted">Accepted</span>
+            {% else %}
+                <span class="party-status-badge pending">Pending</span>
+            {% endif %}
+        </div>
+    {% endfor %}
+</div>
+
+<hr/>
+
+ {% for meeting in meetings %} 
+
+{% comment %} Get invitation for current user's party type for this meeting {% endcomment %}
+{% assign invitation = invitations | where: 'av_meeting.id', meeting.av_meetingid | first %} 
+
+{% comment %} Check if any member of the same party type has already accepted this meeting {% endcomment %}
+{% assign meeting_all_invitations = all_meeting_invitations | where: 'av_meeting.id', meeting.av_meetingid %}
+{% assign same_party_invitations = meeting_all_invitations | where: 'av_partytype.Value', param_party_type %}
+{% assign party_already_accepted = same_party_invitations | where: 'statuscode.Value', 485580006 | first %}
+
+ {% assign specialist = meeting_time_slots | where: 'av_meeting.id', meeting.av_meetingid | select: 'av_specialist' | first  %}
+
+  <div class="invitation-details">
+
+      <h4 class="invitation-title"> {{ meeting.av_type.Label }} </h4> 
+	  <div class="invitation-details-row">
+       <h5 class="invitation-details-label">Meeting Mode: </h5> <h5 class="invitation-details-value">{{ meeting.av_mode.Label }}</h5>  
+      </div>
+      <div class="invitation-details-row">
+        <h5 class="invitation-details-label">Specialist: </h5> <h5 class="invitation-details-value">{{ specialist.name }}</h5>  
+      </div>
+      <div class="invitation-details-row">  
+        <h5 class="invitation-details-label">Description: </h5> <h5 class="invitation-details-value"> {{ meeting.av_description }}
+        </h5>  
+      </div>
+  </div>
+
+  <hr/>
+  <div id="slotError" class="banner hidden"></div>
+  <div class="meeting-time-slots-container{{meeting.av_meetingid}}" 
+     data-seq="{{ meeting.av_currentinteractionsequence }}"
+     data-meeting-id="{{ meeting.av_meetingid }}"
+     data-sequence-count="{{ meeting.av_totalinteractionsequence }}">
+
+    {% assign filtered_slots = meeting_time_slots    | where: 'av_meeting.id', meeting.av_meetingid    | where: 'statuscode.Value', 485580001 %}
+
+{% assign meeting_time_slots_groups = filtered_slots | group_by: 'av_meetingday' %}
+
+     {% for meeting_time_slots_group in meeting_time_slots_groups %} 
+
+     <h5 class="meeting-time-slot-date"> {{ meeting_time_slots_group.key | date: 'dd MMMM, dddd'  }}</h5>
+     <div class="meeting-time-slot-time-container">
+
+      {% for item in meeting_time_slots_group.items %}
+
+        {% assign current_slot_id = item.av_meetingtimeslotid  %}
+
+
+        {% case invitation.statuscode.Value %}
+
+
+        {% when 485580006 %}  {% comment  %} Accepted  {% endcomment %} 
+
+
+           {% if invitation.av_interactionsequence != meeting.av_currentinteractionsequence %} 
+             <div id="{{ item.av_meetingtimeslotid }}" class="meeting-time-slot-time-card selected disabled">
+              <span class="meeting-time-slot-time"> {{ item.av_startdatetime | date: 'h:mm tt' }} - {{ item.av_startdatetime | date_add_minutes: item.av_duration.Value  | date: 'h:mm tt' }}</span>
+             </div>
+
+            {% else %} 
+             <div id="{{ item.av_meetingtimeslotid }}" style="{% if item.statuscode.Value == 485580002 %}background-color:#88E788;{% endif %}" class="meeting-time-slot-time-card disabled">
+              <span class="meeting-time-slot-time"> {{ item.av_startdatetime | date: 'h:mm tt' }} - {{ item.av_startdatetime | date_add_minutes: item.av_duration.Value  | date: 'h:mm tt' }}</span>
+             </div>
+           {% endif %}
+
+        {% when 485580001 %}  {% comment  %} Sent  {% endcomment %} 
+           {% if invitation.av_interactionsequence == 1 %} 
+
+            <div id="{{ item.av_meetingtimeslotid }}" class="meeting-time-slot-time-card" onclick="onSlotClick('{{ item.av_meetingtimeslotid }}', 'confirmBtn{{meeting.av_meetingid}}','rejectBtn{{meeting.av_meetingid}}', 'meeting-time-slots-container{{meeting.av_meetingid}}');">
+              <span class="meeting-time-slot-time"> {{ item.av_startdatetime | date: 'h:mm tt' }} - {{ item.av_startdatetime | date_add_minutes: item.av_duration.Value    | date: 'h:mm tt'   }} </span>
+            </div>
+           {% elsif invitation.av_interactionsequence > 1 %}
+            <div id="{{ item.av_meetingtimeslotid }}" class="meeting-time-slot-time-card" onclick="onSlotClick('{{ item.av_meetingtimeslotid }}', 'confirmBtn{{meeting.av_meetingid}}','rejectBtn{{meeting.av_meetingid}}', 'meeting-time-slots-container{{meeting.av_meetingid}}');">
+              <span class="meeting-time-slot-time"> {{ item.av_startdatetime | date: 'h:mm tt' }} - {{ item.av_startdatetime | date_add_minutes: item.av_duration.Value    | date: 'h:mm tt'   }} </span>
+            </div>
+           {% else %}
+            <div id="{{ item.av_meetingtimeslotid }}" class="meeting-time-slot-time-card disable">
+              <span class="meeting-time-slot-time">N/A {{ item.av_startdatetime | date: 'h:mm tt' }} - {{ item.av_startdatetime | date_add_minutes: item.av_duration.Value    | date: 'h:mm tt'   }} </span>
+            </div>  
+           {% endif %}
+
+        {% when 485580007 %}  {% comment  %} Rejected  {% endcomment %} 
+
+
+
+        {% else %}
+
+
+
+        {% endcase %}
+
+
+      {% endfor %}
+
+     </div>
+      
+     {% endfor %}
+
+    {% comment %} Show action buttons only if:
+        1. Invitation sequence matches current meeting sequence
+        2. Invitation status is 'Sent' (485580001)
+        3. No other member of the same party type has already accepted
+    {% endcomment %}
+    {% if invitation.av_interactionsequence == meeting.av_currentinteractionsequence and invitation.statuscode.Value == 485580001 %}
+        {% if party_already_accepted %}
+            <div class="party-accepted-notice">
+                <span class="notice-icon">✓</span>
+                <span>Another member of your party has already accepted this invitation.</span>
+            </div>
+        {% else %}
+            <div id="meeting-time-slot-actions" class="meeting-time-slot-btn-container">
+                <button id="confirmBtn{{meeting.av_meetingid}}" class="btn meeting-time-slot-btn-confirm" disabled onclick="acceptInvitation('{{ invitation.av_invitationid }}',{{ meeting.av_totalinteractionsequence }},{{ meeting.av_currentinteractionsequence }}, '{{ param_party_type }}');" type="button">Confirm</button>
+                <button id="rejectBtn{{meeting.av_meetingid}}" class="btn meeting-time-slot-btn-reject"  onclick="rejectInvitation('{{ invitation.av_invitationid }}');"  type="button">Reject</button>
+            </div>
+        {% endif %}
+    {% endif %} 
+
+
+  </div>
+ 
+ {% endfor %}   
+</div>
+
+
+{% include 'Portal Web API Token' %}
+
+
+<script>
+  // global variables
+var selectedSlotIds = [];
+
+function onSlotClick(slotId,confirmButton, rejectButton, container) {
+  if (!slotId) return;
+
+  const slotsContainer = document.getElementsByClassName(container)[0];
+  const selectedSlot = document.getElementById(slotId);
+  const children = slotsContainer.getElementsByClassName("meeting-time-slot-time-card");
+  const confirmBtn = document.getElementById(confirmButton);
+  const rejectBtn = document.getElementById(rejectButton);
+
+  // Remove "selected" class from all children
+  for (let i = 0; i < children.length; i++) {
+    children[i].classList.remove("selected");
+  }
+
+  // Check if the slotId is already in the array
+  const index = selectedSlotIds.indexOf(slotId);
+  if (index > -1) {
+    // If it is, remove it
+    selectedSlotIds.splice(index, 1);
+    toggleDisabled(confirmBtn, true);
+    toggleDisabled(rejectBtn, true);
+  } else {
+    // If it isn't, add it
+    selectedSlotIds.push(slotId);
+    selectedSlot.classList.add("selected");
+    toggleDisabled(confirmBtn, false);
+    toggleDisabled(rejectBtn, false);
+  }
+
+  // Add "selected" class to all selected slots
+  selectedSlotIds.forEach(id => {
+    const slot = document.getElementById(id);
+    if (slot) {
+      slot.classList.add("selected");
+    }
+  });
+};
+
+async function rejectInvitation(invitationId){
+
+  const updateUrl = `/_api/av_invitations(${invitationId})`;
+  const statusData = {
+    "statuscode": 485580007,
+    "statecode" : 1
+  };
+
+  loading(true);
+
+  try {
+    
+    // Update the statuscode
+    await webapi.safeAjax({
+      type: "PATCH",
+      url: updateUrl,
+      async: true,
+      contentType: "application/json",
+      data: JSON.stringify(statusData)
+    });
+    removeActionButtons();
+    loading(false);
+  } catch (error) {
+    console.log(error);
+    loading(false);
+    showOverlayError();
+  }
+};
+
+async function acceptInvitation(invitationId, totalSequence, currentSequence, partyType) {
+  loading(true);
+  
+  switch(currentSequence) {
+	  case 1:
+		hideSlotError();
+		
+		if(currentSequence === totalSequence) {
+			if(selectedSlotIds.length > 1) {
+				loading(false);
+				showSlotError("Please select only one time slot.");
+				return;
+			}
+			// Accept for the entire party type
+			await updateTimeSlots(invitationId,{"statuscode":485580006,"statecode":1},{"statuscode":485580002,"statecode":1}, partyType)
+		}
+		else {
+			if(selectedSlotIds.length < 2) {
+				loading(false);
+				showSlotError("Please select at least two time slots.");
+				return;
+			}
+			// Accept for the entire party type
+			await updateTimeSlots(invitationId,{"statuscode":485580006,"statecode":1}, null, partyType)
+		}
+		
+		break;
+	  case 2:
+		if(selectedSlotIds.length > 1) {
+			loading(false);
+			showSlotError("Please select only one time slot.");
+			return;
+		}
+		hideSlotError();
+		
+		// Accept for the entire party type
+		await updateTimeSlots(invitationId,{"statuscode":485580006,"statecode":1},{"statuscode":485580002,"statecode":1}, partyType)
+		
+		break;
+  }
+};
+
+function showSlotError(message) {
+  const banner = document.getElementById("slotError");
+  if (!banner) return;
+
+  banner.textContent = message;      // Set dynamic message
+  banner.classList.remove("hidden"); // Show the banner
+}
+
+function hideSlotError() {
+  const banner = document.getElementById("slotError");
+  if (!banner) return;
+
+  banner.classList.add("hidden");    // Hide the banner
+}
+
+async function updateTimeSlots(invitationId, invitationStatusData, timeSlotStatusData, partyType) {
+  await updateNotSelectedTimeSlots();
+	const baseUrl = '{{ request.url | base  }}';
+	const associateUrl = `/_api/av_invitations(${invitationId})/av_Invitation_timeSlot/$ref`;
+	const updateUrl = `/_api/av_invitations(${invitationId})`;
+	
+	try {
+		
+    for (const slotId of selectedSlotIds) {
+      // Associate slot with the invitation
+      const associationData = {
+        "@odata.id": `${baseUrl}/_api/av_meetingtimeslots(${slotId})`
+      };
+
+      await webapi.safeAjax({
+        type: "POST",
+        url: associateUrl,
+        async: true,
+        contentType: "application/json",
+        data: JSON.stringify(associationData)
+      });
+	  
+	  if(timeSlotStatusData) {
+		await webapi.safeAjax({
+        type: "PATCH",
+        url: `/_api/av_meetingtimeslots(${slotId})`,
+        async: true,
+        contentType: "application/json",
+        data: JSON.stringify(timeSlotStatusData)
+      });
+      console.log("Updated to Booked",slotId);
+	  }
+    }
+
+    // Update invitation status
+    await webapi.safeAjax({
+      type: "PATCH",
+      url: updateUrl,
+      async: true,
+      contentType: "application/json",
+      data: JSON.stringify(invitationStatusData)
+    });
+
+    removeActionButtons();
+    loading(false);
+  } catch (error) {
+    console.log(error);
+    loading(false);
+    showOverlayError();
+  }
+}
+
+function removeActionButtons(){
+  
+  const actions = document.getElementById('meeting-time-slot-actions');
+  const allTimeSlotsIds = [];
+
+  {% for mg in meeting_time_slots_groups %}
+      {% for i in mg.items %}  
+         allTimeSlotsIds.push('{{  i.av_meetingtimeslotid }}')
+      {% endfor %}     
+  {% endfor %}  
+
+  for (const slotId of allTimeSlotsIds) {
+      const selectedSlot = document.getElementById(slotId);
+      selectedSlot.onclick = null;
+  }
+
+  if(actions) { actions.remove(); }
+};
+
+async function updateNotSelectedTimeSlots() {
+    const allTimeSlotsIds = [];
+
+    {% for mg in meeting_time_slots_groups %}
+        {% for i in mg.items %}
+            allTimeSlotsIds.push('{{ i.av_meetingtimeslotid }}');
+        {% endfor %}
+    {% endfor %}
+
+    console.log("All slots:", allTimeSlotsIds);
+    console.log("Selected slots:", selectedSlotIds);
+
+    // Loop through all slots
+    for (const slotId of allTimeSlotsIds) {
+        // If this slot is NOT in the selected slots array
+        if (!selectedSlotIds.includes(slotId)) {
+
+            const updateUrl = `/_api/av_meetingtimeslots(${slotId})`; 
+
+            try {
+                await webapi.safeAjax({
+                    type: "PATCH",
+                    url: `/_api/av_meetingtimeslots(${slotId})`,
+                    async: true,
+                    contentType: "application/json",
+                    data: JSON.stringify({"statecode": 0,"statuscode": 1})
+                });
+                console.log(`Updated slot ${slotId} to 'Not Selected'`);
+            } catch (error) {
+                console.error(`Error updating slot ${slotId}:`, error);
+            }
+        }
+    }
+}
+</script>  
+
+<style>
+  .invitation-container {
+    padding: 35px;
+    border-radius: 4px;
+    border: 1px solid #E8E8E8;
+  }
+  .invitation-details{
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding-bottom: 10px;
+  }
+  .invitation-title {
+   font-family: Arial;
+   font-size: 16px;
+   font-weight: 700;
+   line-height: 24.8px;
+   margin: 0;
+  }
+  .invitation-details-row {
+    display: flex;
+    justify-content: flex-start;
+    gap: 20px;
+  }
+  .invitation-details-label {
+    font-family: Open Sans;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 20px;
+    letter-spacing: 0.01em;
+    color: #9A99A2;
+    min-width: 80px;
+    margin: 0;
+  }
+  .invitation-details-value {
+    font-family: Open Sans;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 20px;
+    letter-spacing: 0.01em;
+    color: #191717;
+    margin: 0;
+  }
+ .meeting-time-slot-time-container{
+    display: flex;
+    gap: 15px;
+    padding-bottom: 10px;            
+ }
+ .meeting-time-slot-date {
+  font-family: Open Sans;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: 0.01em;
+  color: #191717;
+ }
+ .meeting-time-slot-time-card {
+    border: 1px solid #E8E8E8;
+    width: 179px;
+    border-radius: 4px;
+    height: 36px;
+    justify-content: center;
+    display: flex;
+    align-items: center;
+    pointer-events: auto;
+    cursor: pointer;
+ }
+ .meeting-time-slot-time-card.selected {
+  background-color: #F0F6FE;
+  border: 2px solid #1967D2;
+ }
+ .meeting-time-slot-time-card.disable {
+   cursor: not-allowed;
+ }
+ .meeting-time-slot-time-card.disable span {
+   color: #888888;
+ }
+ .meeting-time-slot-time {
+  font-family: Lato;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 21px;
+  color: #191717;
+ }
+ .meeting-time-slot-btn-container {
+  display: flex;
+  padding-top: 30px;
+  justify-content: flex-end;
+  gap: 15px;
+ }
+ .meeting-time-slot-btn-confirm {
+   width: 160px;
+   height: 36px;
+   border-radius: 4px;
+   border: 1px solid #1967D2;
+   background: #1967D2;
+   color: #FFFFFF;
+   font-family: Lato;
+   font-size: 14px;
+   font-weight: 500;
+   line-height: 21px;
+ }
+ .meeting-time-slot-btn-confirm:hover{
+   background: #1967D2;
+   color: #FFFFFF;
+ }
+ .meeting-time-slot-btn-reject {
+   width: 160px;
+   height: 36px;
+   border-radius: 4px;
+   border: 1px solid #1967D2;
+   background: #FFFFFF;
+   color: #1967D2;
+   font-family: Lato;
+   font-size: 14px;
+   font-weight: 500;
+   line-height: 21px;
+ }
+ .meeting-time-slot-btn-reject:hover {
+   background: #FFFFFF;
+   border: 1px solid #1967D2;
+   color: #1967D2;
+ }
+
+.meeting-time-slot-btn-reject:disabled,.meeting-time-slot-btn-confirm:disabled{
+  border: 1px solid #999999;
+}
+
+/* Party-centric styles */
+.party-info-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background-color: #F0F6FE;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  border-left: 4px solid #1967D2;
+}
+
+.party-label {
+  font-family: Open Sans;
+  font-size: 14px;
+  font-weight: 400;
+  color: #666;
+}
+
+.party-type {
+  font-family: Open Sans;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1967D2;
+}
+
+.party-status-container {
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: #f9f9f9;
+  border-radius: 4px;
+}
+
+.party-status-title {
+  font-family: Open Sans;
+  font-size: 14px;
+  font-weight: 600;
+  color: #191717;
+  margin: 0 0 10px 0;
+}
+
+.party-status-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  margin-bottom: 5px;
+  background-color: #fff;
+  border-radius: 4px;
+  border: 1px solid #E8E8E8;
+}
+
+.party-status-name {
+  font-family: Open Sans;
+  font-size: 13px;
+  font-weight: 500;
+  color: #191717;
+}
+
+.party-status-badge {
+  font-family: Open Sans;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 12px;
+}
+
+.party-status-badge.accepted {
+  background-color: #E8F5E9;
+  color: #2E7D32;
+}
+
+.party-status-badge.pending {
+  background-color: #FFF3E0;
+  color: #E65100;
+}
+
+.party-accepted-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 20px;
+  margin-top: 20px;
+  background-color: #E8F5E9;
+  border-radius: 4px;
+  border: 1px solid #A5D6A7;
+}
+
+.party-accepted-notice .notice-icon {
+  font-size: 18px;
+  color: #2E7D32;
+}
+
+.party-accepted-notice span {
+  font-family: Open Sans;
+  font-size: 14px;
+  color: #2E7D32;
+}
+
+</style>
+
+{% endif %}

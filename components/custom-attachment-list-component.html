@@ -1,0 +1,264 @@
+{% fetchxml global_setting_query %}
+<fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false">
+    <entity name="adx_setting">
+        <attribute name="adx_settingid" />
+        <attribute name="adx_name" />
+        <attribute name="adx_value" />
+        <attribute name="adx_description" />
+        <attribute name="createdon" />
+    </entity>
+</fetch>
+{% endfetchxml %}
+{% assign global_settings = global_setting_query.results.entities %}
+
+{% comment %} contains id for undocumented internal api. PackageImportComplete record is created(by system) during portal scaffolding {% endcomment %}
+{% assign package_import_complete = global_settings | where: "adx_name", "PackageImportComplete" | select: "adx_value" %}
+
+
+{% capture param_string %}{{ user_party_role_param }}{% endcapture %}
+{% assign roles = param_string | split: ',' %}
+
+
+{% fetchxml portal_comments_query %}
+<fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false">
+    <entity name="adx_portalcomment">
+        <attribute name="activityid" />
+        <attribute name="subject" />
+        <attribute name="description" />
+        <attribute name="av_party" />
+        <attribute name="av_portaluser" />
+        <attribute name="av_partyrole" />
+        <attribute name="createdon" />
+        <filter type="and">
+            <filter type="or">
+                <filter type="and">
+                    <condition attribute="av_party" operator="eq" value="{{ user_party_type_param }}" />
+                    <condition attribute="av_partyrole" operator="contain-values">
+                        {% for role in roles %}<value>{{ role }}</value>{% endfor %}
+                    </condition>
+                </filter>
+                <filter type="and">
+                    <condition attribute="av_portaluser" operator="eq" value="{{ user.id }}" />
+                </filter>
+            </filter>
+            {% comment %} helps with portal cache {% endcomment %}
+            <condition attribute="createdon" operator="ne" value="{{ now }}" />
+        </filter>
+        <link-entity name="annotation" from="objectid" to="activityid" link-type="inner" alias="attachment">
+            <attribute name="annotationid" />
+            <attribute name="filename" />
+            <attribute name="filesize" />
+            <filter>
+                <condition attribute="filename" operator="not-null" />
+            </filter>
+        </link-entity>
+    </entity>
+</fetch>
+{% endfetchxml %}
+
+{% assign portal_comments = portal_comments_query.results.entities %}
+
+<div class="attachment-list-container">
+    {% if portal_comments.size > 0 %}
+    <div class="attachment-grid">
+        {% for portal_comment in portal_comments %}
+        {% if portal_comment['attachment.filename'] %}
+        <div class="attachment-card">
+            <div class="attachment-card-icon">
+                {% assign filename = portal_comment['attachment.filename'] %}
+                {% assign ext = filename | split: '.' | last | downcase %}
+                {% if ext == 'pdf' %}
+                <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 2C6.9 2 6 2.9 6 4V28C6 29.1 6.9 30 8 30H24C25.1 30 26 29.1 26 28V10L18 2H8Z" fill="#E53935"/>
+                    <path d="M18 2V10H26L18 2Z" fill="#FFCDD2"/>
+                    <text x="16" y="22" text-anchor="middle" fill="white" font-size="7" font-weight="bold" font-family="Segoe UI, sans-serif">PDF</text>
+                </svg>
+                {% elsif ext == 'doc' or ext == 'docx' %}
+                <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 2C6.9 2 6 2.9 6 4V28C6 29.1 6.9 30 8 30H24C25.1 30 26 29.1 26 28V10L18 2H8Z" fill="#1976D2"/>
+                    <path d="M18 2V10H26L18 2Z" fill="#BBDEFB"/>
+                    <text x="16" y="22" text-anchor="middle" fill="white" font-size="6" font-weight="bold" font-family="Segoe UI, sans-serif">DOC</text>
+                </svg>
+                {% elsif ext == 'xls' or ext == 'xlsx' %}
+                <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 2C6.9 2 6 2.9 6 4V28C6 29.1 6.9 30 8 30H24C25.1 30 26 29.1 26 28V10L18 2H8Z" fill="#388E3C"/>
+                    <path d="M18 2V10H26L18 2Z" fill="#C8E6C9"/>
+                    <text x="16" y="22" text-anchor="middle" fill="white" font-size="6" font-weight="bold" font-family="Segoe UI, sans-serif">XLS</text>
+                </svg>
+                {% elsif ext == 'png' or ext == 'jpg' or ext == 'jpeg' or ext == 'gif' or ext == 'bmp' %}
+                <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 2C6.9 2 6 2.9 6 4V28C6 29.1 6.9 30 8 30H24C25.1 30 26 29.1 26 28V10L18 2H8Z" fill="#7B1FA2"/>
+                    <path d="M18 2V10H26L18 2Z" fill="#E1BEE7"/>
+                    <text x="16" y="22" text-anchor="middle" fill="white" font-size="6" font-weight="bold" font-family="Segoe UI, sans-serif">IMG</text>
+                </svg>
+                {% else %}
+                <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 2C6.9 2 6 2.9 6 4V28C6 29.1 6.9 30 8 30H24C25.1 30 26 29.1 26 28V10L18 2H8Z" fill="#616161"/>
+                    <path d="M18 2V10H26L18 2Z" fill="#BDBDBD"/>
+                    <text x="16" y="22" text-anchor="middle" fill="white" font-size="5" font-weight="bold" font-family="Segoe UI, sans-serif">FILE</text>
+                </svg>
+                {% endif %}
+            </div>
+            <div class="attachment-card-info">
+                <span class="attachment-card-name" title="{{ portal_comment['attachment.filename'] }}">{{ portal_comment['attachment.filename'] }}</span>
+                <span class="attachment-card-size">{{ portal_comment['attachment.filesize'] | divided_by: 1024 | round: 2 }} KB</span>
+            </div>
+            <a href="/_entity/annotation/{{ portal_comment['attachment.annotationid'] }}/{{ package_import_complete.adx_value }}"
+                class="attachment-card-download" download
+                title="Download {{ portal_comment['attachment.filename'] }}">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                    <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+                </svg>
+            </a>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="attachment-empty">
+        <svg width="48" height="48" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 2C6.9 2 6 2.9 6 4V28C6 29.1 6.9 30 8 30H24C25.1 30 26 29.1 26 28V10L18 2H8Z" fill="#E0E0E0"/>
+            <path d="M18 2V10H26L18 2Z" fill="#BDBDBD"/>
+        </svg>
+        <p>No attachments available</p>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+/* Fluent UI v9 Inspired Styles */
+:root {
+    --fluent-brand-primary: #0f6cbd;
+    --fluent-background-primary: #ffffff;
+    --fluent-background-subtle: #fafafa;
+    --fluent-foreground-primary: #242424;
+    --fluent-foreground-secondary: #616161;
+    --fluent-border-subtle: #e0e0e0;
+    --fluent-radius-medium: 4px;
+    --fluent-radius-large: 8px;
+    --fluent-font-family: "Segoe UI", "Segoe UI Web", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif;
+    --fluent-shadow-2: 0 1px 2px rgba(0, 0, 0, 0.14), 0 0 2px rgba(0, 0, 0, 0.12);
+    --fluent-shadow-4: 0 2px 4px rgba(0, 0, 0, 0.14), 0 0 2px rgba(0, 0, 0, 0.12);
+}
+
+.attachment-list-container {
+    font-family: var(--fluent-font-family);
+    padding: 16px 0;
+}
+
+/* Attachment Grid */
+.attachment-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+}
+
+/* Attachment Card */
+.attachment-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: var(--fluent-background-primary);
+    border: 1px solid var(--fluent-border-subtle);
+    border-radius: var(--fluent-radius-medium);
+    transition: all 0.1s ease;
+    box-shadow: var(--fluent-shadow-2);
+}
+
+.attachment-card:hover {
+    border-color: var(--fluent-brand-primary);
+    box-shadow: var(--fluent-shadow-4);
+}
+
+/* Card Icon */
+.attachment-card-icon {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.attachment-card-icon svg {
+    width: 32px;
+    height: 32px;
+}
+
+/* Card Info */
+.attachment-card-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.attachment-card-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--fluent-foreground-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.attachment-card-size {
+    font-size: 12px;
+    color: var(--fluent-foreground-secondary);
+}
+
+/* Download Button */
+.attachment-card-download {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--fluent-radius-medium);
+    background: transparent;
+    color: var(--fluent-foreground-secondary);
+    text-decoration: none;
+    transition: all 0.1s ease;
+}
+
+.attachment-card-download:hover {
+    background: rgba(15, 108, 189, 0.08);
+    color: var(--fluent-brand-primary);
+}
+
+.attachment-card-download:active {
+    background: rgba(15, 108, 189, 0.12);
+}
+
+/* Empty State */
+.attachment-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    color: var(--fluent-foreground-secondary);
+    text-align: center;
+}
+
+.attachment-empty svg {
+    margin-bottom: 12px;
+    opacity: 0.6;
+}
+
+.attachment-empty p {
+    margin: 0;
+    font-size: 14px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+    .attachment-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
