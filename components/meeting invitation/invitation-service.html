@@ -2,82 +2,23 @@
 ================================================================================
 PARTY-CENTRIC INVITATION SERVICE
 ================================================================================
-This service retrieves meeting invitations based on the user's party type.
-
 Parameters:
-  - param_party_type (required): The party type value (e.g., 485580001 for complainant, 485580000 for respondent)
-  - param_filter_attribute (optional): Dynamic filter attribute name (e.g., 'av_case', 'av_matter', etc.)
-  - param_filter_value (optional): Dynamic filter value for the attribute
+  - param_party_type (required): The party type value (e.g., 485580001 = complainant, 485580000 = respondent)
+  - param_filter_attribute (required): Filter attribute on av_meeting (e.g., 'av_case')
+  - param_filter_value (required): Filter value (e.g., case GUID)
 
-Logic:
-  - User represents a party type (complainant, respondent, or any custom type)
-  - Invitations are fetched by av_partytype field on av_invitation
-  - When one representative of a party type accepts, it applies to the whole party type
-  - Supports multiple party types (not limited to 2 sides)
-  - Dynamic filtering allows the system to work with any parent entity, not just av_case
+Flow (same as original but party-centric):
+  1. Get meetings by filter attribute (av_case, etc.)
+  2. Get meeting time slots by meetings
+  3. Get invitations by meetings AND party type (NOT user.id)
+  4. Get all invitations to track acceptance status per party type
+  5. Get selected time slots
 ================================================================================
 {% endcomment %}
 
-{% comment %} ==================== STEP 1: GET USER'S PARTIES ==================== {% endcomment %}
-{% if param_party_type %}
+{% if param_filter_attribute and param_filter_value %}
 
-    {% fetchxml user_parties_query %}
-        <fetch version="1.0" output-format="xml-platform" mapping="logical">
-            <entity name="av_party">
-                <attribute name="av_partyid" />
-                <attribute name="av_partytype" />
-                <attribute name="av_contact" />
-                <attribute name="av_case" />
-                <attribute name="av_name" />
-                <filter type="and">
-                    <condition attribute="av_contact" operator="eq" value="{{ user.id }}" />
-                    <condition attribute="av_partytype" operator="eq" value="{{ param_party_type }}" />
-                </filter>
-            </entity>
-        </fetch>
-    {% endfetchxml %}
-
-    {% assign user_parties = user_parties_query.results.entities %}
-    {% assign user_party = user_parties | first %}
-
-{% endif %}
-
-{% comment %} ==================== STEP 2: GET INVITATIONS BY PARTY TYPE ==================== {% endcomment %}
-{% if user_party %}
-
-    {% fetchxml invitation_query %}
-        <fetch version="1.0" output-format="xml-platform" mapping="logical">
-            <entity name="av_invitation">
-                <attribute name="av_invitationid" />
-                <attribute name="av_location" />
-                <attribute name="av_interactionsequence" />
-                <attribute name="av_invitee" />
-                <attribute name="av_partytype" />
-                <attribute name="statuscode" />
-                <attribute name="av_meeting" />
-                <filter type="and">
-                    {% comment %} Filter by party type - key change from user-centric to party-centric {% endcomment %}
-                    <condition attribute="av_partytype" operator="eq" value="{{ param_party_type }}" />
-                    
-                    {% comment %} Dynamic filter - allows flexibility for any parent entity {% endcomment %}
-                    {% if param_filter_attribute and param_filter_value %}
-                    <condition attribute="{{ param_filter_attribute }}" operator="eq" value="{{ param_filter_value }}" />
-                    {% endif %}
-                </filter>
-            </entity>
-        </fetch>
-    {% endfetchxml %}
-
-    {% assign invitations = invitation_query.results.entities %}
-
-{% endif %}
-
-{% comment %} ==================== STEP 3: GET MEETINGS FROM INVITATIONS ==================== {% endcomment %}
-{% if invitations.size > 0 %}
-
-    {% comment %} Extract unique meeting IDs from invitations {% endcomment %}
-    {% assign meeting_ids = invitations | map: 'av_meeting' | map: 'id' | uniq %}
-
+    {% comment %} ==================== STEP 1: GET MEETINGS ==================== {% endcomment %}
     {% fetchxml meeting_query %}
         <fetch version="1.0" output-format="xml-platform" mapping="logical">
             <entity name="av_meeting">
@@ -89,15 +30,7 @@ Logic:
                 <attribute name="av_case" />
                 <attribute name="av_currentinteractionsequence" />
                 <filter type="and">
-                    <condition attribute="av_meetingid" operator="in">
-                        {% for invitation in invitations %}
-                            <value>{{ invitation.av_meeting.id }}</value>
-                        {% endfor %}
-                    </condition>
-                    {% comment %} Optional: Add dynamic filter on meeting level too {% endcomment %}
-                    {% if param_filter_attribute and param_filter_value %}
                     <condition attribute="{{ param_filter_attribute }}" operator="eq" value="{{ param_filter_value }}" />
-                    {% endif %}
                 </filter>
             </entity>
         </fetch>
@@ -105,112 +38,126 @@ Logic:
 
     {% assign meetings = meeting_query.results.entities %}
 
-{% endif %}
+    {% if meetings.size > 0 %}
 
-{% comment %} ==================== STEP 4: GET MEETING TIME SLOTS ==================== {% endcomment %}
-{% if meetings.size > 0 %}
+        {% comment %} ==================== STEP 2: GET MEETING TIME SLOTS ==================== {% endcomment %}
+        {% fetchxml meeting_time_slot_query %}
+            <fetch version="1.0" output-format="xml-platform" mapping="logical">
+                <entity name="av_meetingtimeslot">
+                    <attribute name="av_meetingtimeslotid" />
+                    <attribute name="av_name" />
+                    <attribute name="statuscode" />
+                    <attribute name="av_startdatetime" />
+                    <attribute name="av_meetingday" />
+                    <attribute name="av_duration" />
+                    <attribute name="av_specialist" />
+                    <attribute name="av_meeting" />
+                    <filter type="and">
+                        <condition attribute="av_meeting" operator="in">
+                            {% for meeting in meetings %}
+                                <value>{{ meeting.av_meetingid }}</value>
+                            {% endfor %}
+                        </condition>
+                    </filter>
+                </entity>
+            </fetch>
+        {% endfetchxml %}
 
-    {% fetchxml meeting_time_slot_query %}
-        <fetch version="1.0" output-format="xml-platform" mapping="logical">
-            <entity name="av_meetingtimeslot">
-                <attribute name="av_meetingtimeslotid" />
-                <attribute name="av_name" />
-                <attribute name="statuscode" />
-                <attribute name="av_startdatetime" />
-                <attribute name="av_meetingday" />
-                <attribute name="av_duration" />
-                <attribute name="av_specialist" />
-                <attribute name="av_meeting" />
-                <filter type="and">
-                    <condition attribute="av_meeting" operator="in">
-                        {% for meeting in meetings %}
-                            <value>{{ meeting.av_meetingid }}</value>
-                        {% endfor %}
-                    </condition>
-                </filter>
-            </entity>
-        </fetch>
-    {% endfetchxml %}
+        {% assign meeting_time_slots = meeting_time_slot_query.results.entities %}
 
-    {% assign meeting_time_slots = meeting_time_slot_query.results.entities %}
+        {% comment %} ==================== STEP 3: GET INVITATIONS BY PARTY TYPE ==================== {% endcomment %}
+        {% comment %} KEY CHANGE: Filter by av_partytype instead of av_invitee (user.id) {% endcomment %}
+        {% fetchxml invitation_query %}
+            <fetch version="1.0" output-format="xml-platform" mapping="logical">
+                <entity name="av_invitation">
+                    <attribute name="av_invitationid" />
+                    <attribute name="av_location" />
+                    <attribute name="av_interactionsequence" />
+                    <attribute name="av_partytype" />
+                    <attribute name="statuscode" />
+                    <attribute name="av_meeting" />
+                    <filter type="and">
+                        <condition attribute="av_meeting" operator="in">
+                            {% for meeting in meetings %}
+                                <value>{{ meeting.av_meetingid }}</value>
+                            {% endfor %}
+                        </condition>
+                        <condition attribute="av_partytype" operator="eq" value="{{ param_party_type }}" />
+                    </filter>
+                </entity>
+            </fetch>
+        {% endfetchxml %}
 
-{% endif %}
+        {% assign invitations = invitation_query.results.entities %}
 
-{% comment %} ==================== STEP 5: GET ALL PARTY TYPES FOR THIS MEETING ==================== {% endcomment %}
-{% comment %} This helps track which party types have accepted - supports N party types {% endcomment %}
-{% if meetings.size > 0 %}
+        {% comment %} ==================== STEP 4: GET ALL INVITATIONS (ALL PARTY TYPES) ==================== {% endcomment %}
+        {% comment %} Used to track acceptance status per party type {% endcomment %}
+        {% fetchxml all_invitations_query %}
+            <fetch version="1.0" output-format="xml-platform" mapping="logical">
+                <entity name="av_invitation">
+                    <attribute name="av_invitationid" />
+                    <attribute name="av_partytype" />
+                    <attribute name="av_interactionsequence" />
+                    <attribute name="statuscode" />
+                    <attribute name="av_meeting" />
+                    <filter type="and">
+                        <condition attribute="av_meeting" operator="in">
+                            {% for meeting in meetings %}
+                                <value>{{ meeting.av_meetingid }}</value>
+                            {% endfor %}
+                        </condition>
+                    </filter>
+                </entity>
+            </fetch>
+        {% endfetchxml %}
 
-    {% fetchxml all_invitations_for_meetings_query %}
-        <fetch version="1.0" output-format="xml-platform" mapping="logical">
-            <entity name="av_invitation">
-                <attribute name="av_invitationid" />
-                <attribute name="av_partytype" />
-                <attribute name="statuscode" />
-                <attribute name="av_meeting" />
-                <attribute name="av_interactionsequence" />
-                <filter type="and">
-                    <condition attribute="av_meeting" operator="in">
-                        {% for meeting in meetings %}
-                            <value>{{ meeting.av_meetingid }}</value>
-                        {% endfor %}
-                    </condition>
-                </filter>
-            </entity>
-        </fetch>
-    {% endfetchxml %}
+        {% assign all_meeting_invitations = all_invitations_query.results.entities %}
+        {% assign party_types_in_meeting = all_meeting_invitations | map: 'av_partytype' | map: 'Value' | uniq %}
 
-    {% assign all_meeting_invitations = all_invitations_for_meetings_query.results.entities %}
-    
-    {% comment %} Group invitations by party type to check acceptance status per party {% endcomment %}
-    {% assign party_types_in_meeting = all_meeting_invitations | map: 'av_partytype' | map: 'Value' | uniq %}
+    {% endif %}
 
-{% endif %}
+    {% comment %} ==================== STEP 5: GET SELECTED TIME SLOTS ==================== {% endcomment %}
+    {% if invitations.size > 0 %}
 
-{% comment %} ==================== STEP 6: GET SELECTED TIME SLOTS ==================== {% endcomment %}
-{% if invitations.size > 0 %}
-
-    {% fetchxml selected_meeting_time_slot_query %}
-        <fetch version="1.0" output-format="xml-platform" mapping="logical">
-            <entity name="av_meetingtimeslot">
-                <attribute name="av_meetingtimeslotid" />
-                <attribute name="av_name" />
-                <attribute name="av_startdatetime" />
-                <attribute name="statuscode" />
-                <attribute name="av_meetingday" />
-                <attribute name="av_duration" />
-                <attribute name="av_specialist" />
-                <link-entity name="av_invitation_meetingtimeslot" from="av_meetingtimeslotid" to="av_meetingtimeslotid" intersect="true">
-                    <link-entity name="av_invitation" from="av_invitationid" to="av_invitationid" alias="invitation">
-                        <filter type="and">
-                            <condition attribute="av_invitationid" operator="in">
-                                {% for invitation in invitations %}
-                                    <value>{{ invitation.av_invitationid }}</value>
-                                {% endfor %}
-                            </condition>
-                        </filter>
+        {% fetchxml selected_meeting_time_slot_query %}
+            <fetch version="1.0" output-format="xml-platform" mapping="logical">
+                <entity name="av_meetingtimeslot">
+                    <attribute name="av_meetingtimeslotid" />
+                    <attribute name="av_name" />
+                    <attribute name="av_startdatetime" />
+                    <attribute name="statuscode" />
+                    <attribute name="av_meetingday" />
+                    <attribute name="av_duration" />
+                    <attribute name="av_specialist" />
+                    <link-entity name="av_invitation_meetingtimeslot" from="av_meetingtimeslotid" to="av_meetingtimeslotid" intersect="true">
+                        <link-entity name="av_invitation" from="av_invitationid" to="av_invitationid" alias="invitation">
+                            <filter type="and">
+                                <condition attribute="av_invitationid" operator="in">
+                                    {% for invitation in invitations %}
+                                        <value>{{ invitation.av_invitationid }}</value>
+                                    {% endfor %}
+                                </condition>
+                            </filter>
+                        </link-entity>
                     </link-entity>
-                </link-entity>
-            </entity>
-        </fetch>
-    {% endfetchxml %}
+                </entity>
+            </fetch>
+        {% endfetchxml %}
 
-    {% assign selected_meeting_time_slots = selected_meeting_time_slot_query.results.entities %}
+        {% assign selected_meeting_time_slots = selected_meeting_time_slot_query.results.entities %}
+
+    {% endif %}
 
 {% endif %}
 
 {% comment %}
 ================================================================================
-EXPOSED VARIABLES FOR COMPONENT:
-  - user_party: Current user's party record
-  - user_parties: All parties the user belongs to with the specified type
-  - invitations: Invitations for the user's party type
-  - meetings: Meetings associated with the invitations
-  - meeting_time_slots: Available time slots for the meetings
-  - all_meeting_invitations: All invitations for the meetings (all party types)
-  - party_types_in_meeting: Unique party types involved in the meetings
-  - selected_meeting_time_slots: Time slots already selected by any party member
-  - param_party_type: The party type parameter passed in
-  - param_filter_attribute: Dynamic filter attribute name
-  - param_filter_value: Dynamic filter value
+EXPOSED VARIABLES:
+  - meetings: Meetings filtered by param_filter_attribute/param_filter_value
+  - meeting_time_slots: Time slots for the meetings
+  - invitations: Invitations for the specified party type
+  - all_meeting_invitations: All invitations for meetings (all party types)
+  - party_types_in_meeting: Unique party type values in the meetings
+  - selected_meeting_time_slots: Time slots already selected
 ================================================================================
 {% endcomment %}
