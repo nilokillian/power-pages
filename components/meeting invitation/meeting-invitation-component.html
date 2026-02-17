@@ -18,9 +18,6 @@ Parameters:
 
 {% assign current_case = entities['av_case'][param_filter_value] %}
 
-
-
-<h5 class="invitation-details-value">meeting_time_slots.size {{ meeting_time_slots.size }}</h5>
 {% if current_case %}
 
 <div class="container invitation-container">
@@ -29,8 +26,9 @@ Parameters:
 
   {% assign invitation = invitations | where: 'av_meeting.id', meeting.av_meetingid | first %}
 
-  {% comment %} DEBUG: output invitation status to diagnose rendering {% endcomment %}
-  <p style="color:red; font-size:11px;">DEBUG inv={{ invitation.av_invitationid }} status={{ invitation.statuscode.Value }} seq={{ invitation.av_interactionsequence }} meetingSeq={{ meeting.av_currentinteractionsequence }}</p>
+  {% comment %} Skip this meeting entirely if no valid invitation exists for this party type {% endcomment %}
+  {% if invitation %}
+
   {% assign meeting_all_invitations = all_meeting_invitations | where: 'av_meeting.id', meeting.av_meetingid %}
   {% assign same_party_invitations = meeting_all_invitations | where: 'av_partytype.Value', param_party_type %}
   {% assign party_already_accepted = same_party_invitations | where: 'statuscode.Value', 485580006 | first %}
@@ -127,11 +125,7 @@ Parameters:
 
       {% else %}
 
-      {% comment %} Fallback: render slot when invitation is nil or has unexpected status {% endcomment %}
-      <div id="{{ item.av_meetingtimeslotid }}" class="meeting-time-slot-time-card"
-        onclick="onSlotClick('{{ item.av_meetingtimeslotid }}', 'confirmBtn{{meeting.av_meetingid}}','rejectBtn{{meeting.av_meetingid}}', 'meeting-time-slots-container{{meeting.av_meetingid}}');">
-        <span class="meeting-time-slot-time"> {{ item.av_startdatetime | date: 'h:mm tt' }} - {{ item.av_startdatetime | date_add_minutes: item.av_duration.Value | date: 'h:mm tt' }} </span>
-      </div>
+
 
       {% endcase %}
 
@@ -158,12 +152,13 @@ Parameters:
     </div>
     {% endif %}
     {% endif %}
-    {% else %}
-    <p style="color:red; font-size:11px;">DEBUG: No invitation found for this meeting and party type</p>
     {% endif %}
 
 
   </div>
+
+  {% endif %}
+  {% comment %} End: skip meeting if no valid invitation {% endcomment %}
 
   {% endfor %}
 </div>
