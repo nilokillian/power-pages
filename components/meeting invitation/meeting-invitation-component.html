@@ -3,9 +3,9 @@
 PARTY-CENTRIC MEETING INVITATION COMPONENT
 ================================================================================
 Parameters:
-  - param_party_type: User's party type (e.g., 485580001 = complainant, 485580000 = respondent)
-  - param_filter_attribute: Dynamic filter attribute (e.g., 'av_case')
-  - param_filter_value: Dynamic filter value (e.g., request.params.id)
+- param_party_type: User's party type (e.g., 485580001 = complainant, 485580000 = respondent)
+- param_filter_attribute: Dynamic filter attribute (e.g., 'av_case')
+- param_filter_value: Dynamic filter value (e.g., request.params.id)
 ================================================================================
 {% endcomment %}
 
@@ -20,126 +20,152 @@ Parameters:
 
 
 
-<h5 class="invitation-details-value">meeting_time_slots.size {{ meeting_time_slots.size }}</h5>  
+<h5 class="invitation-details-value">meeting_time_slots.size {{ meeting_time_slots.size }}</h5>
 {% if current_case %}
 
 <div class="container invitation-container">
 
- {% for meeting in meetings %} 
+  {% for meeting in meetings %}
 
-{% assign invitation = invitations | where: 'av_meeting.id', meeting.av_meetingid | first %} 
+  {% assign invitation = invitations | where: 'av_meeting.id', meeting.av_meetingid | first %}
 
-{% comment %} Check if any member of the same party type has already accepted this meeting {% endcomment %}
-{% assign meeting_all_invitations = all_meeting_invitations | where: 'av_meeting.id', meeting.av_meetingid %}
-{% assign same_party_invitations = meeting_all_invitations | where: 'av_partytype.Value', param_party_type %}
-{% assign party_already_accepted = same_party_invitations | where: 'statuscode.Value', 485580006 | first %}
+  {% comment %} DEBUG: output invitation status to diagnose rendering {% endcomment %}
+  <p style="color:red; font-size:11px;">DEBUG inv={{ invitation.av_invitationid }} status={{ invitation.statuscode.Value }} seq={{ invitation.av_interactionsequence }} meetingSeq={{ meeting.av_currentinteractionsequence }}</p>
+  {% assign meeting_all_invitations = all_meeting_invitations | where: 'av_meeting.id', meeting.av_meetingid %}
+  {% assign same_party_invitations = meeting_all_invitations | where: 'av_partytype.Value', param_party_type %}
+  {% assign party_already_accepted = same_party_invitations | where: 'statuscode.Value', 485580006 | first %}
 
- {% assign specialist = meeting_time_slots | where: 'av_meeting.id', meeting.av_meetingid | select: 'av_specialist' | first  %}
+  {% assign specialist = meeting_time_slots | where: 'av_meeting.id', meeting.av_meetingid | select: 'av_specialist' | first %}
 
   <div class="invitation-details">
 
-      <h4 class="invitation-title"> {{ meeting.av_type.Label }} </h4> 
-	  <div class="invitation-details-row">
-       <h5 class="invitation-details-label">Meeting Mode: </h5> <h5 class="invitation-details-value">{{ meeting.av_mode.Label }}</h5>  
-      </div>
-      <div class="invitation-details-row">
-        <h5 class="invitation-details-label">Specialist: </h5> <h5 class="invitation-details-value">{{ specialist.name }}</h5>  
-      </div>
-      <div class="invitation-details-row">  
-        <h5 class="invitation-details-label">Description: </h5> <h5 class="invitation-details-value"> {{ meeting.av_description }}
-        </h5>  
-      </div>
+    <h4 class="invitation-title"> {{ meeting.av_type.Label }} </h4>
+    <div class="invitation-details-row">
+      <h5 class="invitation-details-label">Meeting Mode: </h5>
+      <h5 class="invitation-details-value">{{ meeting.av_mode.Label }}</h5>
+    </div>
+    <div class="invitation-details-row">
+      <h5 class="invitation-details-label">Specialist: </h5>
+      <h5 class="invitation-details-value">{{ specialist.name }}</h5>
+    </div>
+    <div class="invitation-details-row">
+      <h5 class="invitation-details-label">Description: </h5>
+      <h5 class="invitation-details-value"> {{ meeting.av_description }}
+      </h5>
+    </div>
   </div>
 
-  <hr/>
+  <hr />
   <div id="slotError" class="banner hidden"></div>
-  <div class="meeting-time-slots-container{{meeting.av_meetingid}}" 
-     data-seq="{{ meeting.av_currentinteractionsequence }}"
-     data-meeting-id="{{ meeting.av_meetingid }}"
-     data-sequence-count="{{ meeting.av_totalinteractionsequence }}">
+  <div class="meeting-time-slots-container{{meeting.av_meetingid}}"
+    data-seq="{{ meeting.av_currentinteractionsequence }}" data-meeting-id="{{ meeting.av_meetingid }}"
+    data-sequence-count="{{ meeting.av_totalinteractionsequence }}">
 
-    {% assign filtered_slots = meeting_time_slots    | where: 'av_meeting.id', meeting.av_meetingid    | where: 'statuscode.Value', 485580001 %}
+    {% assign filtered_slots = meeting_time_slots | where: 'av_meeting.id', meeting.av_meetingid | where: 'statuscode.Value', 485580001 %}
 
-{% assign meeting_time_slots_groups = filtered_slots | group_by: 'av_meetingday' %}
+    {% assign meeting_time_slots_groups = filtered_slots | group_by: 'av_meetingday' %}
 
-     {% for meeting_time_slots_group in meeting_time_slots_groups %} 
+    {% for meeting_time_slots_group in meeting_time_slots_groups %}
 
-     <h5 class="meeting-time-slot-date"> {{ meeting_time_slots_group.key | date: 'dd MMMM, dddd'  }}</h5>
-     <div class="meeting-time-slot-time-container">
+    <h5 class="meeting-time-slot-date"> {{ meeting_time_slots_group.key | date: 'dd MMMM, dddd' }}</h5>
+    <div class="meeting-time-slot-time-container">
 
       {% for item in meeting_time_slots_group.items %}
 
-        {% assign current_slot_id = item.av_meetingtimeslotid  %}
+      {% assign current_slot_id = item.av_meetingtimeslotid %}
 
 
-        {% case invitation.statuscode.Value %}
+      {% case invitation.statuscode.Value %}
 
 
-        {% when 485580006 %}  {% comment  %} Accepted  {% endcomment %} 
+      {% when 485580006 %} {% comment %} Accepted {% endcomment %}
 
 
-           {% if invitation.av_interactionsequence != meeting.av_currentinteractionsequence %} 
-             <div id="{{ item.av_meetingtimeslotid }}" class="meeting-time-slot-time-card selected disabled">
-              <span class="meeting-time-slot-time"> {{ item.av_startdatetime | date: 'h:mm tt' }} - {{ item.av_startdatetime | date_add_minutes: item.av_duration.Value  | date: 'h:mm tt' }}</span>
-             </div>
+      {% if invitation.av_interactionsequence != meeting.av_currentinteractionsequence %}
+      <div id="{{ item.av_meetingtimeslotid }}" class="meeting-time-slot-time-card selected disabled">
+        <span class="meeting-time-slot-time"> {{ item.av_startdatetime | date: 'h:mm tt' }} - {{ item.av_startdatetime | date_add_minutes: item.av_duration.Value | date: 'h:mm tt' }}</span>
+      </div>
 
-            {% else %} 
-             <div id="{{ item.av_meetingtimeslotid }}" style="{% if item.statuscode.Value == 485580002 %}background-color:#88E788;{% endif %}" class="meeting-time-slot-time-card disabled">
-              <span class="meeting-time-slot-time"> {{ item.av_startdatetime | date: 'h:mm tt' }} - {{ item.av_startdatetime | date_add_minutes: item.av_duration.Value  | date: 'h:mm tt' }}</span>
-             </div>
-           {% endif %}
+      {% else %}
+      <div id="{{ item.av_meetingtimeslotid }}"
+        style="{% if item.statuscode.Value == 485580002 %}background-color:#88E788;{% endif %}"
+        class="meeting-time-slot-time-card disabled">
+        <span class="meeting-time-slot-time"> {{ item.av_startdatetime | date: 'h:mm tt' }} - {{ item.av_startdatetime | date_add_minutes: item.av_duration.Value | date: 'h:mm tt' }}</span>
+      </div>
+      {% endif %}
 
-        {% when 485580001 %}  {% comment  %} Sent  {% endcomment %} 
-           {% if invitation.av_interactionsequence == 1 %} 
+      {% when 485580001 %} {% comment %} Sent {% endcomment %}
+      {% comment %} For sequence > 1, only show slots selected by the previous party {% endcomment %}
+      {% if invitation.av_interactionsequence > 1 %}
+      {% assign is_in_prev_selection = false %}
+      {% if prev_party_selected_slots %}
+      {% for prev_slot in prev_party_selected_slots %}
+      {% if prev_slot.av_meetingtimeslotid == item.av_meetingtimeslotid %}
+      {% assign is_in_prev_selection = true %}
+      {% break %}
+      {% endif %}
+      {% endfor %}
+      {% endif %}
 
-            <div id="{{ item.av_meetingtimeslotid }}" class="meeting-time-slot-time-card" onclick="onSlotClick('{{ item.av_meetingtimeslotid }}', 'confirmBtn{{meeting.av_meetingid}}','rejectBtn{{meeting.av_meetingid}}', 'meeting-time-slots-container{{meeting.av_meetingid}}');">
-              <span class="meeting-time-slot-time"> {{ item.av_startdatetime | date: 'h:mm tt' }} - {{ item.av_startdatetime | date_add_minutes: item.av_duration.Value    | date: 'h:mm tt'   }} </span>
-            </div>
-           {% elsif invitation.av_interactionsequence > 1 %}
-            <div id="{{ item.av_meetingtimeslotid }}" class="meeting-time-slot-time-card" onclick="onSlotClick('{{ item.av_meetingtimeslotid }}', 'confirmBtn{{meeting.av_meetingid}}','rejectBtn{{meeting.av_meetingid}}', 'meeting-time-slots-container{{meeting.av_meetingid}}');">
-              <span class="meeting-time-slot-time"> {{ item.av_startdatetime | date: 'h:mm tt' }} - {{ item.av_startdatetime | date_add_minutes: item.av_duration.Value    | date: 'h:mm tt'   }} </span>
-            </div>
-           {% else %}
-            <div id="{{ item.av_meetingtimeslotid }}" class="meeting-time-slot-time-card disable">
-              <span class="meeting-time-slot-time">N/A {{ item.av_startdatetime | date: 'h:mm tt' }} - {{ item.av_startdatetime | date_add_minutes: item.av_duration.Value    | date: 'h:mm tt'   }} </span>
-            </div>  
-           {% endif %}
+      {% if is_in_prev_selection %}
+      <div id="{{ item.av_meetingtimeslotid }}" class="meeting-time-slot-time-card"
+        onclick="onSlotClick('{{ item.av_meetingtimeslotid }}', 'confirmBtn{{meeting.av_meetingid}}','rejectBtn{{meeting.av_meetingid}}', 'meeting-time-slots-container{{meeting.av_meetingid}}');">
+        <span class="meeting-time-slot-time"> {{ item.av_startdatetime | date: 'h:mm tt' }} - {{ item.av_startdatetime | date_add_minutes: item.av_duration.Value | date: 'h:mm tt' }} </span>
+      </div>
+      {% endif %}
+      {% else %}
+      {% comment %} Sequence 1: show all available slots {% endcomment %}
+      <div id="{{ item.av_meetingtimeslotid }}" class="meeting-time-slot-time-card"
+        onclick="onSlotClick('{{ item.av_meetingtimeslotid }}', 'confirmBtn{{meeting.av_meetingid}}','rejectBtn{{meeting.av_meetingid}}', 'meeting-time-slots-container{{meeting.av_meetingid}}');">
+        <span class="meeting-time-slot-time"> {{ item.av_startdatetime | date: 'h:mm tt' }} - {{ item.av_startdatetime | date_add_minutes: item.av_duration.Value | date: 'h:mm tt' }} </span>
+      </div>
+      {% endif %}
 
-        {% when 485580007 %}  {% comment  %} Rejected  {% endcomment %} 
-
-
-
-        {% else %}
+      {% when 485580007 %} {% comment %} Rejected {% endcomment %}
 
 
 
-        {% endcase %}
+      {% else %}
+
+      {% comment %} Fallback: render slot when invitation is nil or has unexpected status {% endcomment %}
+      <div id="{{ item.av_meetingtimeslotid }}" class="meeting-time-slot-time-card"
+        onclick="onSlotClick('{{ item.av_meetingtimeslotid }}', 'confirmBtn{{meeting.av_meetingid}}','rejectBtn{{meeting.av_meetingid}}', 'meeting-time-slots-container{{meeting.av_meetingid}}');">
+        <span class="meeting-time-slot-time"> {{ item.av_startdatetime | date: 'h:mm tt' }} - {{ item.av_startdatetime | date_add_minutes: item.av_duration.Value | date: 'h:mm tt' }} </span>
+      </div>
+
+      {% endcase %}
 
 
       {% endfor %}
 
-     </div>
-      
-     {% endfor %}
+    </div>
 
+    {% endfor %}
+
+    {% if invitation %}
     {% if invitation.av_interactionsequence == meeting.av_currentinteractionsequence and invitation.statuscode.Value == 485580001 %}
-        {% if party_already_accepted %}
-            <div class="party-accepted-notice">
-                <span class="notice-icon">✓</span>
-                <span>Another member of your party has already accepted this invitation.</span>
-            </div>
-        {% else %}
-   <div id="meeting-time-slot-actions" class="meeting-time-slot-btn-container">
-    <button id="confirmBtn{{meeting.av_meetingid}}" class="btn meeting-time-slot-btn-confirm" disabled onclick="acceptInvitation('{{ invitation.av_invitationid }}',{{ meeting.av_totalinteractionsequence }},{{ meeting.av_currentinteractionsequence }});" type="button">Confirm</button>
-    <button id="rejectBtn{{meeting.av_meetingid}}" class="btn meeting-time-slot-btn-reject"  onclick="rejectInvitation('{{ invitation.av_invitationid }}');"  type="button">Reject</button>
-   </div>
-        {% endif %}
-   {% endif %} 
+    {% if party_already_accepted %}
+    <div class="party-accepted-notice">
+      <span class="notice-icon">✓</span>
+      <span>Another member of your party has already accepted this invitation.</span>
+    </div>
+    {% else %}
+    <div id="meeting-time-slot-actions" class="meeting-time-slot-btn-container">
+      <button id="confirmBtn{{meeting.av_meetingid}}" class="btn meeting-time-slot-btn-confirm" disabled
+        onclick="acceptInvitation('{{ invitation.av_invitationid }}');" type="button">Confirm</button>
+      <button id="rejectBtn{{meeting.av_meetingid}}" class="btn meeting-time-slot-btn-reject"
+        onclick="rejectInvitation('{{ invitation.av_invitationid }}');" type="button">Reject</button>
+    </div>
+    {% endif %}
+    {% endif %}
+    {% else %}
+    <p style="color:red; font-size:11px;">DEBUG: No invitation found for this meeting and party type</p>
+    {% endif %}
 
 
   </div>
- 
- {% endfor %}   
+
+  {% endfor %}
 </div>
 
 
@@ -148,230 +174,163 @@ Parameters:
 
 <script>
   // global variables
-var selectedSlotIds = [];
+  var selectedSlotIds = [];
 
-function onSlotClick(slotId,confirmButton, rejectButton, container) {
-  if (!slotId) return;
+  function onSlotClick(slotId, confirmButton, rejectButton, container) {
+    if (!slotId) return;
 
-  const slotsContainer = document.getElementsByClassName(container)[0];
-  const selectedSlot = document.getElementById(slotId);
-  const children = slotsContainer.getElementsByClassName("meeting-time-slot-time-card");
-  const confirmBtn = document.getElementById(confirmButton);
-  const rejectBtn = document.getElementById(rejectButton);
+    const selectedSlot = document.getElementById(slotId);
+    const confirmBtn = document.getElementById(confirmButton);
+    const rejectBtn = document.getElementById(rejectButton);
 
-  // Remove "selected" class from all children
-  for (let i = 0; i < children.length; i++) {
-    children[i].classList.remove("selected");
-  }
-
-  // Check if the slotId is already selected (toggle off)
-  const index = selectedSlotIds.indexOf(slotId);
-  if (index > -1) {
-    // Deselect - clear the array
-    selectedSlotIds = [];
-    toggleDisabled(confirmBtn, true);
-    toggleDisabled(rejectBtn, true);
-  } else {
-    // Select only this one slot (replace any previous selection)
-    selectedSlotIds = [slotId];
-    selectedSlot.classList.add("selected");
-    toggleDisabled(confirmBtn, false);
-    toggleDisabled(rejectBtn, false);
-  }
-};
-
-async function rejectInvitation(invitationId){
-
-  const updateUrl = `/_api/av_invitations(${invitationId})`;
-  const statusData = {
-    "statuscode": 485580007,
-    "statecode" : 1
-  };
-
-  loading(true);
-
-  try {
-    
-    // Update the statuscode
-    await webapi.safeAjax({
-      type: "PATCH",
-      url: updateUrl,
-      async: true,
-      contentType: "application/json",
-      data: JSON.stringify(statusData)
-    });
-    removeActionButtons();
-    loading(false);
-  } catch (error) {
-    console.log(error);
-    loading(false);
-    showOverlayError();
-  }
-};
-
-async function acceptInvitation(invitationId, totalSequence, currentSequence, partyType) {
-  loading(true);
-  
-  switch(currentSequence) {
-	  case 1:
-		hideSlotError();
-		
-		if(currentSequence === totalSequence) {
-			if(selectedSlotIds.length > 1) {
-				loading(false);
-				showSlotError("Please select only one time slot.");
-				return;
-			}
-			// Accept for the entire party type
-			await updateTimeSlots(invitationId,{"statuscode":485580006,"statecode":1},{"statuscode":485580002,"statecode":1}, partyType)
-		}
-		else {
-			if(selectedSlotIds.length < 2) {
-				loading(false);
-				showSlotError("Please select at least two time slots.");
-				return;
-			}
-			// Accept for the entire party type
-			await updateTimeSlots(invitationId,{"statuscode":485580006,"statecode":1}, null, partyType)
-		}
-		
-		break;
-	  case 2:
-		if(selectedSlotIds.length > 1) {
-			loading(false);
-			showSlotError("Please select only one time slot.");
-			return;
-		}
-		hideSlotError();
-		
-		// Accept for the entire party type
-		await updateTimeSlots(invitationId,{"statuscode":485580006,"statecode":1},{"statuscode":485580002,"statecode":1}, partyType)
-		
-		break;
-  }
-};
-
-function showSlotError(message) {
-  const banner = document.getElementById("slotError");
-  if (!banner) return;
-
-  banner.textContent = message;      // Set dynamic message
-  banner.classList.remove("hidden"); // Show the banner
-}
-
-function hideSlotError() {
-  const banner = document.getElementById("slotError");
-  if (!banner) return;
-
-  banner.classList.add("hidden");    // Hide the banner
-}
-
-async function updateTimeSlots(invitationId, invitationStatusData, timeSlotStatusData, partyType) {
-  await updateNotSelectedTimeSlots();
-	const baseUrl = '{{ request.url | base  }}';
-	const associateUrl = `/_api/av_invitations(${invitationId})/av_Invitation_timeSlot/$ref`;
-	const updateUrl = `/_api/av_invitations(${invitationId})`;
-	
-	try {
-		
-    for (const slotId of selectedSlotIds) {
-      // Associate slot with the invitation
-      const associationData = {
-        "@odata.id": `${baseUrl}/_api/av_meetingtimeslots(${slotId})`
-      };
-
-      await webapi.safeAjax({
-        type: "POST",
-        url: associateUrl,
-        async: true,
-        contentType: "application/json",
-        data: JSON.stringify(associationData)
-      });
-	  
-	  if(timeSlotStatusData) {
-		await webapi.safeAjax({
-        type: "PATCH",
-        url: `/_api/av_meetingtimeslots(${slotId})`,
-        async: true,
-        contentType: "application/json",
-        data: JSON.stringify(timeSlotStatusData)
-      });
-      console.log("Updated to Booked",slotId);
-	  }
+    // Toggle this slot's selection
+    const index = selectedSlotIds.indexOf(slotId);
+    if (index > -1) {
+      // Deselect this slot
+      selectedSlotIds.splice(index, 1);
+      selectedSlot.classList.remove("selected");
+    } else {
+      // Add this slot to selection
+      selectedSlotIds.push(slotId);
+      selectedSlot.classList.add("selected");
     }
 
-    // Update invitation status
-    await webapi.safeAjax({
-      type: "PATCH",
-      url: updateUrl,
-      async: true,
-      contentType: "application/json",
-      data: JSON.stringify(invitationStatusData)
-    });
+    // Enable/disable buttons based on whether any slots are selected
+    const hasSelection = selectedSlotIds.length > 0;
+    toggleDisabled(confirmBtn, !hasSelection);
+    toggleDisabled(rejectBtn, !hasSelection);
+  };
 
-    removeActionButtons();
-    loading(false);
-  } catch (error) {
-    console.log(error);
-    loading(false);
-    showOverlayError();
+  async function rejectInvitation(invitationId) {
+
+    const updateUrl = `/_api/av_invitations(${invitationId})`;
+    const statusData = {
+      "statuscode": 485580007,
+      "statecode": 1
+    };
+
+    loading(true);
+
+    try {
+
+      // Update the statuscode
+      await webapi.safeAjax({
+        type: "PATCH",
+        url: updateUrl,
+        async: true,
+        contentType: "application/json",
+        data: JSON.stringify(statusData)
+      });
+      removeActionButtons();
+      loading(false);
+    } catch (error) {
+      console.log(error);
+      loading(false);
+      showOverlayError();
+    }
+  };
+
+  async function acceptInvitation(invitationId) {
+    loading(true);
+    hideSlotError();
+
+    if (selectedSlotIds.length === 0) {
+      loading(false);
+      showSlotError("Please select at least one time slot.");
+      return;
+    }
+
+    // Associate selected slots with the invitation and mark invitation as accepted.
+    // The backend will find the matching slot across all parties.
+    await updateTimeSlots(invitationId, { "statuscode": 485580006, "statecode": 1 });
+  };
+
+  function showSlotError(message) {
+    const banner = document.getElementById("slotError");
+    if (!banner) return;
+
+    banner.textContent = message;      // Set dynamic message
+    banner.classList.remove("hidden"); // Show the banner
   }
-}
 
-function removeActionButtons(){
-  
-  const actions = document.getElementById('meeting-time-slot-actions');
-  const allTimeSlotsIds = [];
+  function hideSlotError() {
+    const banner = document.getElementById("slotError");
+    if (!banner) return;
 
-  {% for mg in meeting_time_slots_groups %}
-      {% for i in mg.items %}  
-         allTimeSlotsIds.push('{{  i.av_meetingtimeslotid }}')
-      {% endfor %}     
-  {% endfor %}  
-
-  for (const slotId of allTimeSlotsIds) {
-      const selectedSlot = document.getElementById(slotId);
-      selectedSlot.onclick = null;
+    banner.classList.add("hidden");    // Hide the banner
   }
 
-  if(actions) { actions.remove(); }
-};
+  async function updateTimeSlots(invitationId, invitationStatusData) {
+    const baseUrl = '{{ request.url | base  }}';
+    const associateUrl = `/_api/av_invitations(${invitationId})/av_Invitation_timeSlot/$ref`;
+    const updateUrl = `/_api/av_invitations(${invitationId})`;
 
-async function updateNotSelectedTimeSlots() {
+    try {
+      // Associate each selected slot with the invitation
+      for (const slotId of selectedSlotIds) {
+        const associationData = {
+          "@odata.id": `${baseUrl}/_api/av_meetingtimeslots(${slotId})`
+        };
+
+        await webapi.safeAjax({
+          type: "POST",
+          url: associateUrl,
+          async: true,
+          contentType: "application/json",
+          data: JSON.stringify(associationData)
+        });
+
+        // Mark the slot as Booked
+        await webapi.safeAjax({
+          type: "PATCH",
+          url: `/_api/av_meetingtimeslots(${slotId})`,
+          async: true,
+          contentType: "application/json",
+          data: JSON.stringify({ "statuscode": 485580002, "statecode": 1 })
+        });
+
+        console.log("Associated and booked slot", slotId);
+      }
+
+      // Update invitation status to Accepted
+      await webapi.safeAjax({
+        type: "PATCH",
+        url: updateUrl,
+        async: true,
+        contentType: "application/json",
+        data: JSON.stringify(invitationStatusData)
+      });
+
+      removeActionButtons();
+      loading(false);
+    } catch (error) {
+      console.log(error);
+      loading(false);
+      showOverlayError();
+    }
+  }
+
+  function removeActionButtons() {
+
+    const actions = document.getElementById('meeting-time-slot-actions');
     const allTimeSlotsIds = [];
 
     {% for mg in meeting_time_slots_groups %}
-        {% for i in mg.items %}
-            allTimeSlotsIds.push('{{ i.av_meetingtimeslotid }}');
-        {% endfor %}
+    {% for i in mg.items %}
+    allTimeSlotsIds.push('{{  i.av_meetingtimeslotid }}')
+    {% endfor %}
     {% endfor %}
 
-    console.log("All slots:", allTimeSlotsIds);
-    console.log("Selected slots:", selectedSlotIds);
-
-    // Loop through all slots
     for (const slotId of allTimeSlotsIds) {
-        // If this slot is NOT in the selected slots array
-        if (!selectedSlotIds.includes(slotId)) {
-
-            const updateUrl = `/_api/av_meetingtimeslots(${slotId})`; 
-
-            try {
-                await webapi.safeAjax({
-                    type: "PATCH",
-                    url: `/_api/av_meetingtimeslots(${slotId})`,
-                    async: true,
-                    contentType: "application/json",
-                    data: JSON.stringify({"statecode": 0,"statuscode": 1})
-                });
-                console.log(`Updated slot ${slotId} to 'Not Selected'`);
-            } catch (error) {
-                console.error(`Error updating slot ${slotId}:`, error);
-            }
-        }
+      const selectedSlot = document.getElementById(slotId);
+      selectedSlot.onclick = null;
     }
-}
-</script>  
+
+    if (actions) { actions.remove(); }
+  };
+
+
+</script>
 
 <style>
   .invitation-container {
@@ -379,26 +338,28 @@ async function updateNotSelectedTimeSlots() {
     border-radius: 4px;
     border: 1px solid #E8E8E8;
   }
-  .invitation-details{
+
+  .invitation-details {
     display: flex;
     flex-direction: column;
     gap: 5px;
     padding-bottom: 10px;
   }
+
   .invitation-title {
-   font-family: Arial;
-   font-size: 16px;
-   font-weight: 700;
-   line-height: 24.8px;
-   margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 24.8px;
+    margin: 0;
   }
+
   .invitation-details-row {
     display: flex;
     justify-content: flex-start;
     gap: 20px;
   }
+
   .invitation-details-label {
-    font-family: Open Sans;
     font-size: 12px;
     font-weight: 400;
     line-height: 20px;
@@ -407,8 +368,8 @@ async function updateNotSelectedTimeSlots() {
     min-width: 80px;
     margin: 0;
   }
+
   .invitation-details-value {
-    font-family: Open Sans;
     font-size: 12px;
     font-weight: 400;
     line-height: 20px;
@@ -416,20 +377,22 @@ async function updateNotSelectedTimeSlots() {
     color: #191717;
     margin: 0;
   }
- .meeting-time-slot-time-container{
+
+  .meeting-time-slot-time-container {
     display: flex;
     gap: 15px;
-    padding-bottom: 10px;            
- }
- .meeting-time-slot-date {
-  font-family: Open Sans;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 20px;
-  letter-spacing: 0.01em;
-  color: #191717;
- }
- .meeting-time-slot-time-card {
+    padding-bottom: 10px;
+  }
+
+  .meeting-time-slot-date {
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 20px;
+    letter-spacing: 0.01em;
+    color: #191717;
+  }
+
+  .meeting-time-slot-time-card {
     border: 1px solid #E8E8E8;
     width: 179px;
     border-radius: 4px;
@@ -439,90 +402,96 @@ async function updateNotSelectedTimeSlots() {
     align-items: center;
     pointer-events: auto;
     cursor: pointer;
- }
- .meeting-time-slot-time-card.selected {
-  background-color: #F0F6FE;
-  border: 2px solid #1967D2;
- }
- .meeting-time-slot-time-card.disable {
-   cursor: not-allowed;
- }
- .meeting-time-slot-time-card.disable span {
-   color: #888888;
- }
- .meeting-time-slot-time {
-  font-family: Lato;
-  font-size: 14px;
-  font-weight: 400;
-  line-height: 21px;
-  color: #191717;
- }
- .meeting-time-slot-btn-container {
-  display: flex;
-  padding-top: 30px;
-  justify-content: flex-end;
-  gap: 15px;
- }
- .meeting-time-slot-btn-confirm {
-   width: 160px;
-   height: 36px;
-   border-radius: 4px;
-   border: 1px solid #1967D2;
-   background: #1967D2;
-   color: #FFFFFF;
-   font-family: Lato;
-   font-size: 14px;
-   font-weight: 500;
-   line-height: 21px;
- }
- .meeting-time-slot-btn-confirm:hover{
-   background: #1967D2;
-   color: #FFFFFF;
- }
- .meeting-time-slot-btn-reject {
-   width: 160px;
-   height: 36px;
-   border-radius: 4px;
-   border: 1px solid #1967D2;
-   background: #FFFFFF;
-   color: #1967D2;
-   font-family: Lato;
-   font-size: 14px;
-   font-weight: 500;
-   line-height: 21px;
- }
- .meeting-time-slot-btn-reject:hover {
-   background: #FFFFFF;
-   border: 1px solid #1967D2;
-   color: #1967D2;
- }
+  }
 
-.meeting-time-slot-btn-reject:disabled,.meeting-time-slot-btn-confirm:disabled{
-  border: 1px solid #999999;
-}
+  .meeting-time-slot-time-card.selected {
+    background-color: #F0F6FE;
+    border: 2px solid #1967D2;
+  }
 
-.party-accepted-notice {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 15px 20px;
-  margin-top: 20px;
-  background-color: #E8F5E9;
-  border-radius: 4px;
-  border: 1px solid #A5D6A7;
-}
+  .meeting-time-slot-time-card.disable {
+    cursor: not-allowed;
+  }
 
-.party-accepted-notice .notice-icon {
-  font-size: 18px;
-  color: #2E7D32;
-}
+  .meeting-time-slot-time-card.disable span {
+    color: #888888;
+  }
 
-.party-accepted-notice span {
-  font-family: Open Sans;
-  font-size: 14px;
-  color: #2E7D32;
-}
+  .meeting-time-slot-time {
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 21px;
+    color: #191717;
+  }
 
+  .meeting-time-slot-btn-container {
+    display: flex;
+    padding-top: 30px;
+    justify-content: flex-end;
+    gap: 15px;
+  }
+
+  .meeting-time-slot-btn-confirm {
+    width: 160px;
+    height: 36px;
+    border-radius: 4px;
+    border: 1px solid #1967D2;
+    background: #1967D2;
+    color: #FFFFFF;
+    font-family: Lato;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 21px;
+  }
+
+  .meeting-time-slot-btn-confirm:hover {
+    background: #1967D2;
+    color: #FFFFFF;
+  }
+
+  .meeting-time-slot-btn-reject {
+    width: 160px;
+    height: 36px;
+    border-radius: 4px;
+    border: 1px solid #1967D2;
+    background: #FFFFFF;
+    color: #1967D2;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 21px;
+  }
+
+  .meeting-time-slot-btn-reject:hover {
+    background: #FFFFFF;
+    border: 1px solid #1967D2;
+    color: #1967D2;
+  }
+
+  .meeting-time-slot-btn-reject:disabled,
+  .meeting-time-slot-btn-confirm:disabled {
+    border: 1px solid #999999;
+  }
+
+  .party-accepted-notice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 15px 20px;
+    margin-top: 20px;
+    background-color: #E8F5E9;
+    border-radius: 4px;
+    border: 1px solid #A5D6A7;
+  }
+
+  .party-accepted-notice .notice-icon {
+    font-size: 18px;
+    color: #2E7D32;
+  }
+
+  .party-accepted-notice span {
+    font-size: 14px;
+    color: #2E7D32;
+  }
 </style>
 
 {% endif %}
